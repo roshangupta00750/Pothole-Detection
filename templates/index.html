@@ -1,0 +1,176 @@
+<html>
+    <head>
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+            <style>
+                    /* Set the size of the div element that contains the map */
+                   #map {
+                     height: 680px;  /* The height is 400 pixels */
+                     width: 100%;  /* The width is the width of the web page */
+                    }
+                 </style>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Simulation of the App</title>
+    </head>
+    <body>
+        <div class="container-fluid">
+            <br>
+            <button id="startRide" onclick="startRide()" class="btn btn-primary">Start Ride</button>
+            <button id="endRide" onclick="endRide()" class="btn btn-danger">End Ride</button>
+            <br><br>
+          <div id="map"></div>
+        </div>
+        
+        
+        
+        <script>
+                var map;
+                var marker;
+                var id, options, updater, devMotion;
+                options = {
+                  enableHighAccuracy: true,
+                  timeout: 5000,
+                  maximumAge: 0
+                };
+                var potholes = [];
+                images = {};
+                images["1"] = "/js/blue-circle.png";
+                images["2"] = "/js/yellow-circle.png";
+                images["3"] = "/js/red-circle.png";
+                images["primary"] = "http://maps.google.com/mapfiles/kml/shapes/motorcycling.png";
+                function initPosition() {
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(showPosition);
+                    } else {
+                        document.getElementById('map').innerHTML = "Geolocation is not supported by this browser.";
+                    }
+                }
+                function showPosition(position) {
+                    var pos = { lat: position.coords.latitude, lng: position.coords.longitude};
+                    map = new google.maps.Map(
+                      document.getElementById('map'), {zoom: 15, center: pos});
+                    marker = new google.maps.Marker({position: pos, map: map, icon: images["primary"]});
+                    api = "/fetch/" + marker.position.lat() + "/" + marker.position.lng() + "/";
+                    var xhttp = new XMLHttpRequest();
+                    xhttp.onreadystatechange = updateMap;
+                    xhttp.open("GET", api, true);
+                    xhttp.send();
+                    
+                    
+                }
+                function setMarker(position) {
+                    var pos = { lat: position.coords.latitude, lng: position.coords.longitude};
+                    
+                    marker = new google.maps.Marker({position: pos, map: map, icon: images["primary"]});
+                    var laLatLng = new google.maps.LatLng( pos.lat,  pos.lng);
+                    map.panTo(laLatLng);
+                    
+                }
+                function updateMap() {
+                    console.log("Updating map")
+                    if (this.readyState == 4 && this.status == 200) {
+                        msg = JSON.parse(this.responseText);
+                        console.log(msg);
+                    for(var i=0; i < potholes.length; i++) {
+                        potholes[i].setMap(null);
+                    }
+                    potholes = [];
+                    for(var i=0; i < msg.length; i++) {
+                        var pos = { lat:msg[i].coordinates[1], lng:msg[i].coordinates[0]}
+                        potholes.push(
+                            new google.maps.Marker({position: pos, map: map, icon: images[msg[i].magnitude.toString()]})
+                        );
+                    }
+                }
+                }
+                
+                function success(pos) {
+                  marker.setMap(null);
+                  setMarker(pos);
+                  api = "/fetch/" + marker.position.lat() + "/" + marker.position.lng() + "/";
+                  var xhttp = new XMLHttpRequest();
+                  xhttp.onreadystatechange = updateMap;
+                  xhttp.open("GET", api, true);
+                  xhttp.send();
+
+                  
+                }
+                function distance(lat1, lon1, lat2, lon2, unit) {
+                    if ((lat1 == lat2) && (lon1 == lon2)) {
+                        return 0;
+                    }
+                    else {
+                        var radlat1 = Math.PI * lat1/180;
+                        var radlat2 = Math.PI * lat2/180;
+                        var theta = lon1-lon2;
+                        var radtheta = Math.PI * theta/180;
+                        var dist = Math.sin(radlat1) * Math.sin(radlat2) + Math.cos(radlat1) * Math.cos(radlat2) * Math.cos(radtheta);
+                        if (dist > 1) {
+                            dist = 1;
+                        }
+                        dist = Math.acos(dist);
+                        dist = dist * 180/Math.PI;
+                        dist = dist * 60 * 1.1515;
+                        if (unit=="K") { dist = dist * 1.609344 }
+                        if (unit=="N") { dist = dist * 0.8684 }
+                        return dist;
+                    }
+                }
+                function ping() {
+                    lt2 = marker.position.lat();
+                    ln2 = marker.position.lng();
+                    for(var i=0; i<msg.length; i++) {
+                        lt1 = msg[i].coordinates[1];
+                        ln1 = msg[i].coordinates[0];
+                        
+                        d = distance(lt1, ln1, lt2, ln2, "M");
+                        if(d < 0.01){
+                            console.log(d);
+                            window.navigator.vibrate([200]);
+                        }
+                    }
+                }
+                function error(err) {
+                  console.warn('ERROR(' + err.code + '): ' + err.message);
+                }
+                function startRide() {
+                  id = navigator.geolocation.watchPosition(success, error, options);
+                  updater = setInterval(ping, 100);
+                  devMotion = window.addEventListener('devicemotion', function(event) {
+                    if(Math.abs(event.acceleration.x) >= 35) {
+                      sendData(3);
+                    }
+                    else if(Math.abs(event.acceleration.x) >= 25) {
+                      sendData(2);
+                    }
+                    else if(Math.abs(event.acceleration.x) >= 10) {
+                      sendData(1)
+                    }
+                  });
+                }  
+                function endRide() {
+                  navigator.geolocation.clearWatch(id);
+                  clearInterval(updater);
+                  window.removeEventListener('devicemotion', function(event){
+
+                  });
+                }
+
+                function sendData(magnitude) {
+                    var lat = marker.position.lat();
+                    var lng = marker.position.lng();
+                    var api = "/insert/" + lat + "/" + lng + "/" + magnitude;
+                    var xhttp = new XMLHttpRequest();
+                    xhttp.open("GET", api, true);
+                    xhttp.send();
+
+                }        
+              
+        </script>
+
+        <script async defer
+                    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC8bMbmwf8kOgs9qmm9yJGU1DooZixE1ww&callback=initPosition">
+                    </script>
+        
+    </body>
+
+</html>

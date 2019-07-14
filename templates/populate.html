@@ -1,0 +1,71 @@
+<html>
+    <head>
+            <style>
+                    /* Set the size of the div element that contains the map */
+                   #map {
+                     height: 400px;  /* The height is 400 pixels */
+                     width: 100%;  /* The width is the width of the web page */
+                    }
+                 </style>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Simulation of the App</title>
+    </head>
+    <body>
+        <div id="map"></div>
+        <div id="positions"></div>
+        <input type="number" id="potHoleMag">
+        <button id="popButton" onclick="sendData()">Send Data</button>
+        <script>
+                var map;
+                var marker;
+                function initPosition() {
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(showPosition);
+                    } else {
+                        document.getElementById('map').innerHTML = "Geolocation is not supported by this browser.";
+                    }
+                }
+                function showPosition(position) {
+                    var pos = { lat: position.coords.latitude, lng: position.coords.longitude};
+                    map = new google.maps.Map(
+                      document.getElementById('map'), {zoom: 15, center: pos});
+                    marker = new google.maps.Marker({position: pos, map: map});
+                    setUpMap();
+                }
+                function setUpMap() {
+                    map.addListener('click', function(e) {
+                    placeMarkerAndPanTo(e.latLng, map);
+                    });
+                    function placeMarkerAndPanTo(latLng, map) {
+                        marker.setMap(null);
+                        marker = new google.maps.Marker({
+                            position: latLng,
+                            map: map
+                        });
+                        console.log(latLng);
+                        map.panTo(latLng);
+                        positions = document.getElementById('positions');
+                        positions.innerHTML = "Latitude :" + marker.position.lat() + "<br>Longitude: " + marker.position.lng();
+                    }
+                }
+
+                  
+                function sendData() {
+                    var lat = marker.position.lat();
+                    var lng = marker.position.lng();
+                    var api = "/insert/" + lat + "/" + lng + "/" + document.getElementById("potHoleMag").value;
+                    var xhttp = new XMLHttpRequest();
+                    xhttp.open("GET", api, true);
+                    xhttp.send();
+
+                }        
+              
+        </script>
+
+        <script async defer
+                    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC8bMbmwf8kOgs9qmm9yJGU1DooZixE1ww&callback=initPosition">
+                    </script>
+        
+    </body>
+
+</html>

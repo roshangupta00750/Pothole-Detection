@@ -1,0 +1,171 @@
+<html>
+    <head>
+            <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+    
+            <style>
+                    /* Set the size of the div element that contains the map */
+                   #map {
+                     height: 680px;  /* The height is 400 pixels */
+                     width: 100%;  /* The width is the width of the web page */
+                    }
+                 </style>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Simulation of the App</title>
+    </head>
+    <body onload="setUpData()">
+        <div class="container-fluid">
+        <br>
+        <button onclick="startSim()" class="btn btn-primary">Start Simulation</button>
+        <button onclick="stopSim()" class="btn btn-dark">Stop Simulation</button>
+        <br><br>
+        <div id="map"></div>
+        </div>
+
+        <script>
+                images = {};
+                images["1"] = "/js/blue-circle.png";
+                images["2"] = "/js/yellow-circle.png";
+                images["3"] = "/js/red-circle.png";
+                images["primary"] = "http://maps.google.com/mapfiles/kml/shapes/motorcycling.png";
+                var msg;
+                var map
+                var potholes = []
+                var updater;
+                var calc;
+                var primary;
+                var simdata;
+                var flag = false;
+                function setUpData() {
+                    api = "/simdata/";
+                    var xhttp = new XMLHttpRequest();
+                    xhttp.onreadystatechange = function() {
+                        if(this.readyState == 4 && this.status == 200) {
+                            simdata = JSON.parse(this.responseText);
+                            simdata = simdata[0];
+                            // console.log(simdata);
+                        }
+                    };
+                    xhttp.open("GET", api, true);
+                    xhttp.send();
+                    
+                    
+                }
+
+                function initPosition() {
+                    
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(showPosition);
+                    } else {
+                        document.getElementById('map').innerHTML = "Geolocation is not supported by this browser.";
+                    }
+                }
+                function showPosition(position) {
+                    var pos = { lat: position.coords.latitude, lng: position.coords.longitude};
+                    
+                    primary = new google.maps.Marker({position: pos, map: map, icon: images["primary"]});
+                    var laLatLng = new google.maps.LatLng( pos.lat,  pos.lng);
+                    map.panTo(laLatLng);
+                    api = "/fetch/" + primary.position.lat() + "/" + primary.position.lng() + "/";
+                    var xhttp = new XMLHttpRequest();
+                    xhttp.onreadystatechange = updateMap;
+                    xhttp.open("GET", api, true);
+                    xhttp.send();
+                }
+                function initMap() {
+                var pos = { lat: 0, lng: 0};
+                map = new google.maps.Map(
+                    document.getElementById('map'), {zoom: 15, center: pos});
+                
+                initPosition();
+                }
+
+                function updateMap() {
+                    console.log("Updating map")
+                    if (this.readyState == 4 && this.status == 200) {
+                        msg = JSON.parse(this.responseText);
+                        console.log(msg);
+                    for(var i=0; i < potholes.length; i++) {
+                        potholes[i].setMap(null);
+                    }
+                    for(var i=0; i < msg.length; i++) {
+                        var pos = { lat:msg[i].coordinates[1], lng:msg[i].coordinates[0]}
+                        potholes.push(
+                            new google.maps.Marker({position: pos, map: map, icon: images[msg[i].magnitude.toString()]})
+                        );
+                    }
+                }
+                }
+                function distance(lat1, lon1, lat2, lon2, unit) {
+                    if ((lat1 == lat2) && (lon1 == lon2)) {
+                        return 0;
+                    }
+                    else {
+                        var radlat1 = Math.PI * lat1/180;
+                        var radlat2 = Math.PI * lat2/180;
+                        var theta = lon1-lon2;
+                        var radtheta = Math.PI * theta/180;
+                        var dist = Math.sin(radlat1) * Math.sin(radlat2) + Math.cos(radlat1) * Math.cos(radlat2) * Math.cos(radtheta);
+                        if (dist > 1) {
+                            dist = 1;
+                        }
+                        dist = Math.acos(dist);
+                        dist = dist * 180/Math.PI;
+                        dist = dist * 60 * 1.1515;
+                        if (unit=="K") { dist = dist * 1.609344 }
+                        if (unit=="N") { dist = dist * 0.8684 }
+                        return dist;
+                    }
+                }
+                function ping() {
+                    lt2 = primary.position.lat();
+                    ln2 = primary.position.lng();
+                    for(var i=0; i<msg.length; i++) {
+                        lt1 = msg[i].coordinates[1];
+                        ln1 = msg[i].coordinates[0];
+                        
+                        d = distance(lt1, ln1, lt2, ln2, "M");
+                        if(d < 0.01){
+                            console.log(d);
+                            window.navigator.vibrate([200]);
+                        }
+                    }
+                }
+
+            function stopSim() {
+                clearInterval(updater);
+                flag = true;
+            }
+            function sleep(ms) {
+                console.log("sleeping");
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+            async function startSim() {
+                flag = false;
+                window.navigator.vibrate([200]);
+                updater = setInterval(ping, 100);
+                console.log("simStarted");
+                for(var i=0; i<simdata.length; i++) {
+                    await sleep(1000);
+                    var p = {};
+                    p.coords = {};
+                    p.coords.latitude = simdata[i][1];
+                    p.coords.longitude = simdata[i][0];
+                    console.log("showing pos");
+                    primary.setMap(null);
+                    showPosition(p);
+                    if(flag == true) {
+                        break;
+                    }
+                        
+                }
+            }
+        
+        </script>
+
+        <script async defer
+                    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC8bMbmwf8kOgs9qmm9yJGU1DooZixE1ww&callback=initMap">
+                    </script>
+        
+    </body>
+
+</html>
